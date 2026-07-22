@@ -101,9 +101,19 @@ ${KNOWLEDGE_BASE_DOCS.map(doc => `### ${doc.title} (${doc.section})\n${doc.conte
 ${OFFICIAL_LINKS.map(link => `- ${link.name}: ${link.url}`).join('\n')}
 `;
 
+function cleanApiKey(key?: string): string {
+  if (!key) return '';
+  let trimmed = key.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 // Helper function to create Gemini client dynamically or use default
 function getGeminiClient(userApiKey?: string) {
-  const apiKey = (userApiKey && userApiKey.trim()) ? userApiKey.trim() : (process.env.GEMINI_API_KEY || '');
+  const cleaned = cleanApiKey(userApiKey);
+  const apiKey = cleaned || cleanApiKey(process.env.GEMINI_API_KEY);
   if (!apiKey) {
     throw new Error('Gemini API Key가 제공되지 않았습니다. API 키를 먼저 입력해 주세요.');
   }
@@ -117,32 +127,56 @@ function getGeminiClient(userApiKey?: string) {
   });
 }
 
+// Helper function to generate content with valid model fallbacks
+async function generateContentWithFallback(aiClient: GoogleGenAI, params: { contents: any; config?: any }) {
+  const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
+  let lastError: any = null;
+
+  for (const model of candidateModels) {
+    try {
+      const response = await aiClient.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config,
+      });
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      const rawMsg = String(err?.message || err || '');
+      // If error is clearly an API key error or quota error, stop falling back and throw immediately
+      if (
+        rawMsg.includes('API_KEY_INVALID') ||
+        rawMsg.includes('API key not valid') ||
+        rawMsg.includes('QUOTA') ||
+        rawMsg.includes('429')
+      ) {
+        throw err;
+      }
+      console.warn(`Model ${model} failed, trying next fallback model...`, rawMsg);
+    }
+  }
+
+  throw lastError;
+}
+
 // API Route for Gemini Key Verification
 app.post('/api/verify-key', async (req, res) => {
   try {
     const { apiKey } = req.body;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+    const cleanedKey = cleanApiKey(apiKey);
+    if (!cleanedKey) {
       return res.status(400).json({
         valid: false,
         error: 'Gemini API Key를 입력해 주세요.'
       });
     }
 
-    const client = getGeminiClient(apiKey.trim());
+    const client = getGeminiClient(cleanedKey);
 
-    // Perform a lightweight verification call to test key validity
-    try {
-      await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: 'Gemini API Key Approval Verification Test',
-      });
-    } catch (modelErr: any) {
-      console.warn('gemini-2.5-flash failed during verification, trying gemini-2.0-flash:', modelErr?.message || modelErr);
-      await client.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: 'Gemini API Key Approval Verification Test',
-      });
-    }
+    // Perform a lightweight verification call using valid Gemini models
+    await generateContentWithFallback(client, {
+      contents: 'Gemini API Key Approval Verification Test',
+    });
 
     return res.json({
       valid: true,
@@ -198,27 +232,13 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    let response;
-    try {
-      response = await aiClient.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: formattedContents,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          temperature: 0.3, // low temperature for high accuracy & compliance with guidelines
-        }
-      });
-    } catch (modelErr: any) {
-      console.warn('gemini-2.5-flash failed during chat, falling back to gemini-2.0-flash:', modelErr?.message || modelErr);
-      response = await aiClient.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: formattedContents,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          temperature: 0.3,
-        }
-      });
-    }
+    const response = await generateContentWithFallback(aiClient, {
+      contents: formattedContents,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        temperature: 0.3,
+      }
+    });
 
     const replyText = response.text || '';
 
