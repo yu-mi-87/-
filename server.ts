@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import { KNOWLEDGE_BASE_DOCS, OFFICIAL_LINKS } from './src/data/knowledgeBase.js';
+import { KNOWLEDGE_BASE_DOCS, OFFICIAL_LINKS } from './src/data/knowledgeBase.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -129,7 +129,7 @@ function getGeminiClient(userApiKey?: string) {
 
 // Helper function to generate content with valid model fallbacks
 async function generateContentWithFallback(aiClient: GoogleGenAI, params: { contents: any; config?: any }) {
-  const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
+  const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
   let lastError: any = null;
 
   for (const model of candidateModels) {
