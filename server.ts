@@ -131,10 +131,18 @@ app.post('/api/verify-key', async (req, res) => {
     const client = getGeminiClient(apiKey.trim());
 
     // Perform a lightweight verification call to test key validity
-    await client.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: 'Gemini API Key Approval Verification Test',
-    });
+    try {
+      await client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: 'Gemini API Key Approval Verification Test',
+      });
+    } catch (modelErr: any) {
+      console.warn('gemini-2.5-flash failed during verification, trying gemini-2.0-flash:', modelErr?.message || modelErr);
+      await client.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: 'Gemini API Key Approval Verification Test',
+      });
+    }
 
     return res.json({
       valid: true,
@@ -190,14 +198,27 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    const response = await aiClient.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: formattedContents,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        temperature: 0.3, // low temperature for high accuracy & compliance with guidelines
-      }
-    });
+    let response;
+    try {
+      response = await aiClient.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: formattedContents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          temperature: 0.3, // low temperature for high accuracy & compliance with guidelines
+        }
+      });
+    } catch (modelErr: any) {
+      console.warn('gemini-2.5-flash failed during chat, falling back to gemini-2.0-flash:', modelErr?.message || modelErr);
+      response = await aiClient.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: formattedContents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          temperature: 0.3,
+        }
+      });
+    }
 
     const replyText = response.text || '';
 
