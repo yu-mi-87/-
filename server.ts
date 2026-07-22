@@ -129,7 +129,7 @@ function getGeminiClient(userApiKey?: string) {
 
 // Helper function to generate content with valid model fallbacks
 async function generateContentWithFallback(aiClient: GoogleGenAI, params: { contents: any; config?: any }) {
-  const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  const candidateModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
   let lastError: any = null;
 
   for (const model of candidateModels) {
@@ -143,16 +143,16 @@ async function generateContentWithFallback(aiClient: GoogleGenAI, params: { cont
     } catch (err: any) {
       lastError = err;
       const rawMsg = String(err?.message || err || '');
-      // If error is clearly an API key error or quota error, stop falling back and throw immediately
+      // If error is clearly an invalid API key, stop trying other models and throw immediately
       if (
         rawMsg.includes('API_KEY_INVALID') ||
         rawMsg.includes('API key not valid') ||
-        rawMsg.includes('QUOTA') ||
-        rawMsg.includes('429')
+        rawMsg.includes('400') ||
+        rawMsg.includes('403')
       ) {
         throw err;
       }
-      console.warn(`Model ${model} failed, trying next fallback model...`, rawMsg);
+      console.warn(`Model ${model} returned non-auth error:`, rawMsg);
     }
   }
 
@@ -171,27 +171,59 @@ app.post('/api/verify-key', async (req, res) => {
       });
     }
 
+    if (cleanedKey.length < 20) {
+      return res.status(400).json({
+        valid: false,
+        error: 'Gemini API Key 형식이 바르지 않습니다. AIzaSy... 형태의 키를 입력해 주세요.'
+      });
+    }
+
     const client = getGeminiClient(cleanedKey);
 
-    // Perform a lightweight verification call using valid Gemini models
-    await generateContentWithFallback(client, {
-      contents: 'Gemini API Key Approval Verification Test',
-    });
+    try {
+      // Lightweight verification test call using maxOutputTokens: 1
+      await generateContentWithFallback(client, {
+        contents: 'test',
+        config: { maxOutputTokens: 1 }
+      });
 
-    return res.json({
-      valid: true,
-      message: 'Gemini API Key가 정상적으로 승인되었습니다. 해피케어 따스미 AI의 모든 기능을 이용하실 수 있습니다.'
-    });
-  } catch (error: any) {
-    console.error('API Key Verification Failed:', error);
-    let userFriendlyError = '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.';
-    const rawMsg = String(error?.message || error || '');
-    if (rawMsg.includes('QUOTA') || rawMsg.includes('429')) {
-      userFriendlyError = '해당 Gemini API 키의 사용 한도(Quota)가 초과되었습니다. Google AI Studio에서 새로운 API Key를 발급받아 승인받아 주세요.';
+      return res.json({
+        valid: true,
+        message: 'Gemini API Key가 정상적으로 승인되었습니다. 해피케어 따스미 AI의 모든 기능을 이용하실 수 있습니다.'
+      });
+    } catch (apiErr: any) {
+      const rawMsg = String(apiErr?.message || apiErr || '');
+      console.error('API Key Test Call Error:', rawMsg);
+
+      // If Google returned 429/QUOTA/RESOURCE_EXHAUSTED, the key IS genuine and authenticated by Google!
+      // Approve the key so the user can enter the app without being falsely rejected.
+      if (
+        rawMsg.includes('QUOTA') ||
+        rawMsg.includes('429') ||
+        rawMsg.includes('RESOURCE_EXHAUSTED') ||
+        rawMsg.includes('Quota exceeded')
+      ) {
+        return res.json({
+          valid: true,
+          message: 'Gemini API Key가 확인 및 승인되었습니다. (참고: 계정의 무료 사용량(Quota) 소진 상태일 수 있습니다.)'
+        });
+      }
+
+      let userFriendlyError = '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.';
+      if (rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid')) {
+        userFriendlyError = '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 AIzaSy... 형태의 키를 새로 발급받아 주세요.';
+      }
+
+      return res.status(400).json({
+        valid: false,
+        error: userFriendlyError
+      });
     }
+  } catch (error: any) {
+    console.error('API Key Verification Catch Error:', error);
     return res.status(400).json({
       valid: false,
-      error: userFriendlyError
+      error: '입력하신 Gemini API 키 검증에 실패했습니다. 키를 다시 확인해 주세요.'
     });
   }
 });
