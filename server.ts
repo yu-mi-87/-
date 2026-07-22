@@ -51,7 +51,7 @@ function getGeminiClient(userApiKey?: string) {
 
 // Helper function to generate content with valid model fallbacks
 async function generateContentWithFallback(aiClient: GoogleGenAI, params: { contents: any; config?: any }) {
-  const candidateModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+  const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
   let lastError: any = null;
 
   for (const model of candidateModels) {
@@ -174,25 +174,34 @@ app.post('/api/chat', async (req, res) => {
 
     const aiClient = getGeminiClient(apiKey);
 
-    // Format conversation history for Gemini
-    const formattedContents = [];
+// Format conversation history for Gemini ensuring contents starts with 'user' role
+    const rawHistory = Array.isArray(history) ? history : [];
+    const firstUserIdx = rawHistory.findIndex((h: any) => h?.sender === 'user' || h?.role === 'user');
+    const validHistory = firstUserIdx !== -1 ? rawHistory.slice(firstUserIdx) : [];
 
-    if (history && Array.isArray(history)) {
-      for (const h of history) {
-        formattedContents.push({
-          role: h.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: h.text }]
-        });
+    const formattedContents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+    for (const h of validHistory) {
+      if (!h.text || typeof h.text !== 'string') continue;
+      const role: 'user' | 'model' = (h.sender === 'user' || h.role === 'user') ? 'user' : 'model';
+
+      if (formattedContents.length > 0 && formattedContents[formattedContents.length - 1].role === role) {
+        formattedContents[formattedContents.length - 1].parts[0].text += '\n\n' + h.text;
+      } else {
+        formattedContents.push({ role, parts: [{ text: h.text }] });
       }
     }
 
-    // Append current message
-    if (message) {
-      formattedContents.push({
-        role: 'user',
-        parts: [{ text: message }]
-      });
-    } else if (isFirstTurn && formattedContents.length === 0) {
+    if (message && message.trim()) {
+      const trimmedMsg = message.trim();
+      if (formattedContents.length > 0 && formattedContents[formattedContents.length - 1].role === 'user') {
+        if (formattedContents[formattedContents.length - 1].parts[0].text !== trimmedMsg) {
+          formattedContents[formattedContents.length - 1].parts[0].text += '\n\n' + trimmedMsg;
+        }
+      } else {
+        formattedContents.push({ role: 'user', parts: [{ text: trimmedMsg }] });
+      }
+    } else if (formattedContents.length === 0) {
       formattedContents.push({
         role: 'user',
         parts: [{ text: '안녕하세요. 상담을 시작하고 싶습니다.' }]

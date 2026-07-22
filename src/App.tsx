@@ -26,6 +26,19 @@ export default function App() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Load saved API Key from localStorage on initial render
+  useEffect(() => {
+    try {
+      const savedKey = localStorage.getItem('gemini_api_key') || '';
+      if (savedKey && savedKey.length >= 20) {
+        setApiKey(savedKey);
+        setIsApproved(true);
+      }
+    } catch (e) {
+      console.warn('Unable to access localStorage:', e);
+    }
+  }, []);
+
   // Auto-scroll to bottom of chat
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -54,6 +67,17 @@ export default function App() {
       return { success: false, message: 'Gemini API Key 형식이 너무 짧습니다. AIzaSy... 형태의 키를 입력해 주세요.' };
     }
 
+    // Helper to persist approved key
+    const saveApprovedKey = (key: string) => {
+      setApiKey(key);
+      setIsApproved(true);
+      try {
+        localStorage.setItem('gemini_api_key', key);
+      } catch (e) {
+        // ignore storage errors
+      }
+    };
+
     // 1. Try server verification API endpoint first
     try {
       const response = await fetch('/api/verify-key', {
@@ -66,8 +90,7 @@ export default function App() {
       if (response.ok && contentType.includes('application/json')) {
         const data = await response.json();
         if (data.valid) {
-          setApiKey(cleanedKey);
-          setIsApproved(true);
+          saveApprovedKey(cleanedKey);
           return {
             success: true,
             message: data.message || 'Gemini API Key가 성공적으로 검증 및 승인되었습니다.',
@@ -92,7 +115,7 @@ export default function App() {
 
       try {
         await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-3.6-flash',
           contents: 'hi',
           config: { maxOutputTokens: 1 }
         });
@@ -113,8 +136,7 @@ export default function App() {
       const isStandardGoogleFormat = cleanedKey.startsWith('AIza') && cleanedKey.length >= 25;
 
       if (isTestCallSuccess || isStandardGoogleFormat || !isExplicitInvalidKey) {
-        setApiKey(cleanedKey);
-        setIsApproved(true);
+        saveApprovedKey(cleanedKey);
         return {
           success: true,
           message: 'Gemini API Key가 성공적으로 확인 및 승인되었습니다. 해피케어 따스미 AI의 모든 기능을 이용하실 수 있습니다.',
@@ -128,8 +150,7 @@ export default function App() {
       }
     } catch (fallbackErr) {
       if (cleanedKey.startsWith('AIza') && cleanedKey.length >= 25) {
-        setApiKey(cleanedKey);
-        setIsApproved(true);
+        saveApprovedKey(cleanedKey);
         return {
           success: true,
           message: 'Gemini API Key가 확인 및 승인되었습니다.',
@@ -147,6 +168,11 @@ export default function App() {
     setApiKey('');
     setIsApproved(false);
     setViewMode('landing');
+    try {
+      localStorage.removeItem('gemini_api_key');
+    } catch (e) {
+      // ignore
+    }
   };
 
   // Initial welcome message (STEP 0 - shown once at start of session)
@@ -240,19 +266,34 @@ export default function App() {
     if (!serverSuccess) {
       try {
         const ai = new GoogleGenAI({ apiKey });
-        const formattedContents = [];
 
-        for (const h of newHistory) {
-          if (h.sender === 'user' || h.sender === 'assistant') {
-            formattedContents.push({
-              role: h.sender === 'user' ? 'user' : 'model',
-              parts: [{ text: h.text }]
-            });
+        const rawHistory = Array.isArray(newHistory) ? newHistory : [];
+        const firstUserIdx = rawHistory.findIndex((h: any) => h?.sender === 'user' || h?.role === 'user');
+        const validHistory = firstUserIdx !== -1 ? rawHistory.slice(firstUserIdx) : [];
+
+        const formattedContents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+        for (const h of validHistory) {
+          if (!h.text || typeof h.text !== 'string') continue;
+          const role: 'user' | 'model' = (h.sender === 'user' || h.role === 'user') ? 'user' : 'model';
+
+          if (formattedContents.length > 0 && formattedContents[formattedContents.length - 1].role === role) {
+            formattedContents[formattedContents.length - 1].parts[0].text += '\n\n' + h.text;
+          } else {
+            formattedContents.push({ role, parts: [{ text: h.text }] });
           }
         }
 
-        const candidateModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+        if (formattedContents.length === 0) {
+          formattedContents.push({
+            role: 'user',
+            parts: [{ text: userPrompt || '안녕하세요. 상담을 시작하고 싶습니다.' }]
+          });
+        }
+
+        const candidateModels = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
         let rawReply = '';
+        let lastModelErr: any = null;
 
         for (const model of candidateModels) {
           try {
@@ -266,13 +307,20 @@ export default function App() {
             });
             rawReply = res.text || '';
             if (rawReply) break;
-          } catch (mErr) {
+          } catch (mErr: any) {
+            lastModelErr = mErr;
             console.warn(`Client model ${model} error:`, mErr);
           }
         }
 
         if (!rawReply) {
-          throw new Error('AI 응답 생성 실패: Gemini API 키 및 네트워크 상태를 확인해 주세요.');
+          const detail = lastModelErr?.message || String(lastModelErr || '');
+          if (detail.includes('API_KEY_INVALID') || detail.includes('API key not valid')) {
+            throw new Error('Gemini API 키가 유효하지 않습니다. Google AI Studio에서 키를 재발급받아 주세요.');
+          } else if (detail.includes('QUOTA') || detail.includes('429') || detail.includes('RESOURCE_EXHAUSTED')) {
+            throw new Error('Gemini API 사용량(Quota) 초과 오류입니다. 잠시 후 다시 시도해 주세요.');
+          }
+          throw new Error(`AI 응답 생성 실패: ${detail || 'Gemini API 키 및 네트워크 상태를 확인해 주세요.'}`);
         }
 
         assistantText = rawReply;
