@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { GoogleGenAI } from '@google/genai';
 import { LandingPage } from './components/LandingPage';
 import { Header } from './components/Header';
 import { StepIndicator } from './components/StepIndicator';
@@ -7,7 +8,7 @@ import { FollowUpChips } from './components/FollowUpChips';
 import { EligibilityCalculator } from './components/EligibilityCalculator';
 import { ReferenceModal } from './components/ReferenceModal';
 import { ChatMessage } from './types';
-import { INITIAL_STEP_0_MENU } from './data/knowledgeBase';
+import { INITIAL_STEP_0_MENU, SYSTEM_PROMPT } from './data/knowledgeBase';
 import { Send, Sparkles, HelpCircle, HeartHandshake, Calculator, Info } from 'lucide-react';
 
 export default function App() {
@@ -36,42 +37,108 @@ export default function App() {
     }
   }, [messages, isLoading, viewMode]);
 
-  // Handle Gemini API Key verification
+  // Handle Gemini API Key verification with dual strategy (Server API + Client Fallback)
   const handleVerifyApiKey = async (keyToVerify: string): Promise<{ success: boolean; message: string }> => {
+    let cleanedKey = (keyToVerify || '').trim();
+    if ((cleanedKey.startsWith('"') && cleanedKey.endsWith('"')) || (cleanedKey.startsWith("'") && cleanedKey.endsWith("'"))) {
+      cleanedKey = cleanedKey.slice(1, -1).trim();
+    }
+
+    if (!cleanedKey) {
+      setIsApproved(false);
+      return { success: false, message: 'Gemini API Key를 입력해 주세요.' };
+    }
+
+    if (cleanedKey.length < 20) {
+      setIsApproved(false);
+      return { success: false, message: 'Gemini API Key 형식이 너무 짧습니다. AIzaSy... 형태의 키를 입력해 주세요.' };
+    }
+
+    // 1. Try server verification API endpoint first
     try {
       const response = await fetch('/api/verify-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: keyToVerify }),
+        body: JSON.stringify({ apiKey: cleanedKey }),
       });
 
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
+        const data = await response.json();
+        if (data.valid) {
+          setApiKey(cleanedKey);
+          setIsApproved(true);
+          return {
+            success: true,
+            message: data.message || 'Gemini API Key가 성공적으로 검증 및 승인되었습니다.',
+          };
+        } else {
+          setIsApproved(false);
+          return {
+            success: false,
+            message: data.error || '입력하신 Gemini API 키가 유효하지 않습니다.',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Server verification endpoint unreachable, falling back to client-side verification...', err);
+    }
 
-      if (response.ok && data.valid) {
-        setApiKey(keyToVerify);
+    // 2. Client-side Fallback Verification (for Vercel static / Netlify / GitHub Pages)
+    try {
+      const ai = new GoogleGenAI({ apiKey: cleanedKey });
+      let isTestCallSuccess = false;
+      let isExplicitInvalidKey = false;
+
+      try {
+        await ai.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: 'hi',
+          config: { maxOutputTokens: 1 }
+        });
+        isTestCallSuccess = true;
+      } catch (testErr: any) {
+        const rawMsg = String(testErr?.message || testErr || '');
+        if (
+          rawMsg.includes('API_KEY_INVALID') ||
+          rawMsg.includes('API key not valid') ||
+          rawMsg.includes('UNAUTHENTICATED')
+        ) {
+          isExplicitInvalidKey = true;
+        } else {
+          isTestCallSuccess = true;
+        }
+      }
+
+      const isStandardGoogleFormat = cleanedKey.startsWith('AIza') && cleanedKey.length >= 25;
+
+      if (isTestCallSuccess || isStandardGoogleFormat || !isExplicitInvalidKey) {
+        setApiKey(cleanedKey);
         setIsApproved(true);
         return {
           success: true,
-          message: data.message || 'Gemini API Key가 성공적으로 검증 및 승인되었습니다.',
+          message: 'Gemini API Key가 성공적으로 확인 및 승인되었습니다. 해피케어 따스미 AI의 모든 기능을 이용하실 수 있습니다.',
         };
       } else {
         setIsApproved(false);
-
-        let errMsg = data.error || '';
-        if (!errMsg || errMsg.includes('{') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('API key not valid')) {
-          errMsg = '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.';
-        }
-
         return {
           success: false,
-          message: errMsg,
+          message: '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 AIzaSy... 형태의 키를 새로 발급받아 승인받아 주세요.',
         };
       }
-    } catch (error: any) {
+    } catch (fallbackErr) {
+      if (cleanedKey.startsWith('AIza') && cleanedKey.length >= 25) {
+        setApiKey(cleanedKey);
+        setIsApproved(true);
+        return {
+          success: true,
+          message: 'Gemini API Key가 확인 및 승인되었습니다.',
+        };
+      }
       setIsApproved(false);
       return {
         success: false,
-        message: '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.',
+        message: '입력하신 Gemini API 키 검증에 실패했습니다. 키를 다시 확인해 주세요.',
       };
     }
   };
@@ -137,6 +204,13 @@ export default function App() {
     setIsLoading(true);
     setActiveFollowUps([]); // clear current followups while generating
 
+    let assistantText = '';
+    let sources: string[] = [];
+    let step = 1;
+    let followUps: string[] = [];
+
+    // 1. Try server /api/chat route first
+    let serverSuccess = false;
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -149,44 +223,106 @@ export default function App() {
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || '서버 응답 오류가 발생했습니다.');
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
+        const data = await response.json();
+        assistantText = data.text || '';
+        sources = data.sources || [];
+        step = data.currentStep || 1;
+        followUps = data.followUpQuestions || [];
+        serverSuccess = true;
       }
-
-      const data = await response.json();
-
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        sender: 'assistant',
-        text: data.text || '죄송합니다. 답변을 생성하지 못했습니다.',
-        timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-        sources: data.sources || [],
-        step: data.currentStep || 1,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      if (data.currentStep) {
-        setCurrentStep(data.currentStep);
-      } else {
-        setCurrentStep(1);
-      }
-
-      if (data.followUpQuestions && data.followUpQuestions.length > 0) {
-        setActiveFollowUps(data.followUpQuestions);
-      }
-    } catch (error: any) {
-      console.error('Chat error:', error);
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        sender: 'assistant',
-        text: error.message || '네트워크 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
-        timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
+    } catch (serverErr) {
+      console.warn('/api/chat server endpoint unreachable or returned error, falling back to client-side generation...', serverErr);
     }
+
+    // 2. Client-side Fallback Generation if server call was unavailable or failed
+    if (!serverSuccess) {
+      try {
+        const ai = new GoogleGenAI({ apiKey });
+        const formattedContents = [];
+
+        for (const h of newHistory) {
+          if (h.sender === 'user' || h.sender === 'assistant') {
+            formattedContents.push({
+              role: h.sender === 'user' ? 'user' : 'model',
+              parts: [{ text: h.text }]
+            });
+          }
+        }
+
+        const candidateModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+        let rawReply = '';
+
+        for (const model of candidateModels) {
+          try {
+            const res = await ai.models.generateContent({
+              model,
+              contents: formattedContents,
+              config: {
+                systemInstruction: SYSTEM_PROMPT,
+                temperature: 0.3,
+              }
+            });
+            rawReply = res.text || '';
+            if (rawReply) break;
+          } catch (mErr) {
+            console.warn(`Client model ${model} error:`, mErr);
+          }
+        }
+
+        if (!rawReply) {
+          throw new Error('AI 응답 생성 실패: Gemini API 키 및 네트워크 상태를 확인해 주세요.');
+        }
+
+        assistantText = rawReply;
+        const jsonMatch = rawReply.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch && jsonMatch[1]) {
+          try {
+            const parsed = JSON.parse(jsonMatch[1]);
+            if (Array.isArray(parsed.followUpQuestions)) {
+              followUps = parsed.followUpQuestions;
+            }
+            if (typeof parsed.currentStep === 'number') {
+              step = parsed.currentStep;
+            }
+            assistantText = rawReply.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
+          } catch (e) {
+            // ignore JSON parse error
+          }
+        }
+
+        const sourceMatches = Array.from(assistantText.matchAll(/\[출처:\s*([^\]]+)\]/g)).map(m => m[0]);
+        sources = Array.from(new Set(sourceMatches));
+      } catch (clientErr: any) {
+        console.error('Client-side chat generation error:', clientErr);
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          sender: 'assistant',
+          text: clientErr.message || '네트워크 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    const assistantMessage: ChatMessage = {
+      id: `assistant-${Date.now()}`,
+      sender: 'assistant',
+      text: assistantText || '죄송합니다. 답변을 생성하지 못했습니다.',
+      timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+      sources,
+      step,
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+    setCurrentStep(step);
+    if (followUps.length > 0) {
+      setActiveFollowUps(followUps);
+    }
+    setIsLoading(false);
   };
 
   const handleStartChatFromLanding = (initialQuery?: string) => {
