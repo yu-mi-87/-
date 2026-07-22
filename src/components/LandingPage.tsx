@@ -224,7 +224,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {isApproved ? (
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      승인 완료 (Gemini 3.6 Flash)
+                      승인 완료 (Gemini AI 연동)
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
