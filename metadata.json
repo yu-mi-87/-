@@ -1,0 +1,6 @@
+{
+  "name": "산모·신생아 건강관리 지원사업 상담 챗봇",
+  "description": "산모·신생아 건강관리 지원사업의 자격조건, 본인부담금, 신청방법, 필요서류 등을 1:1 맞춤형으로 대화 상담하는 전담 챗봇",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
