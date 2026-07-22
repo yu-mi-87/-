@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <p className="text-xs text-[#8a817a] flex items-center gap-1.5 mt-0.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>따스미 1:1 대화 상담</span>
+                <span>해피케어 따스미 1:1 대화 상담</span>
                 <span className="text-[#bc8a5f]">•</span>
                 <span className="text-[#967468] font-bold">2026년 최신 기준</span>
               </p>

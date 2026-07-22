@@ -58,7 +58,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenReference,
 }) => {
   // API Key Input & Verification State
-  const [inputKey, setInputKey] = useState<string>(apiKey || '');
+  const [inputKey, setInputKey] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [verifyResult, setVerifyResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -66,6 +66,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [showGuideSection, setShowGuideSection] = useState<boolean>(false);
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+
+  const handleResetClick = () => {
+    setInputKey('');
+    setVerifyResult(null);
+    setWarningMessage(null);
+    onResetApiKey();
+  };
 
   // Quick Calculator State inside Landing Page Hero
   const [quickHousehold, setQuickHousehold] = useState<number>(3);
@@ -143,7 +150,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-[#3b3531] text-base tracking-tight">따스미 AI</span>
+                <span className="font-extrabold text-[#3b3531] text-base tracking-tight">해피케어 따스미 AI</span>
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#f4ebe4] text-[#85665b] border border-[#e4d5ca]">
                   2026 보건복지부 지침
                 </span>
@@ -228,8 +235,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </div>
                 <p className="text-xs text-[#8a817a] mt-0.5">
                   {isApproved
-                    ? 'Gemini API Key가 승인되었습니다. 따스미 AI 1:1 상담, 소득 판정 계산기, 근거 지침 문서를 자유롭게 이용하실 수 있습니다.'
-                    : '따스미 AI 상담 및 모든 기능을 이용하시려면 Gemini API Key를 입력하고 승인받아 주세요.'}
+                    ? 'Gemini API Key가 승인되었습니다. 해피케어 따스미 AI 1:1 상담, 소득 판정 계산기, 근거 지침 문서를 자유롭게 이용하실 수 있습니다.'
+                    : '해피케어 따스미 AI 상담 및 모든 기능을 이용하시려면 Gemini API Key를 입력하고 승인받아 주세요.'}
                 </p>
               </div>
             </div>
@@ -241,7 +248,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {apiKey.length > 8 ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : 'Key Verified'}
                 </div>
                 <button
-                  onClick={onResetApiKey}
+                  onClick={handleResetClick}
                   className="px-3.5 py-2 rounded-full bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -500,9 +507,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     3
                   </div>
                   <div>
-                    <h4 className="font-extrabold text-sm text-[#3b3531]">API Key 복사 및 따스미 AI 승인</h4>
+                    <h4 className="font-extrabold text-sm text-[#3b3531]">API Key 복사 및 해피케어 따스미 AI 승인</h4>
                     <p className="text-xs text-[#8a817a] mt-0.5">
-                      생성된 <code className="bg-stone-200 px-1 py-0.5 rounded font-mono text-[#3b3531]">AIzaSy...</code> 형태의 문자열을 복사한 뒤, 따스미 AI 메인 화면의 입력창에 붙여넣고 <strong>[API 키 검증 & 승인받기]</strong>를 누르시면 모든 메뉴가 즉시 해제됩니다!
+                      생성된 <code className="bg-stone-200 px-1 py-0.5 rounded font-mono text-[#3b3531]">AIzaSy...</code> 형태의 문자열을 복사한 뒤, 해피케어 따스미 AI 메인 화면의 입력창에 붙여넣고 <strong>[API 키 검증 & 승인받기]</strong>를 누르시면 모든 메뉴가 즉시 해제됩니다!
                     </p>
                   </div>
                 </div>
@@ -607,7 +614,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={() => handleGatedAction(() => onStartChat())}
                 className="flex items-center gap-2.5 px-6 py-4 rounded-full bg-[#967468] hover:bg-[#85665b] text-white text-base font-bold shadow-lg hover:shadow-xl transition-all cursor-pointer group"
               >
-                <span>💬 따스미 AI와 1:1 맞춤 상담 시작하기</span>
+                <span>💬 해피케어 따스미 AI와 1:1 맞춤 상담 시작하기</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
 
@@ -940,7 +947,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               WHY CHOOSE TASEUMI
             </span>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-[#3b3531]">
-              20-30대 임산부들이 '따스미'를 신뢰하는 이유
+              20-30대 임산부들이 '해피케어 따스미'를 신뢰하는 이유
             </h2>
             <p className="text-sm sm:text-base text-[#8a817a]">
               어려운 정부 행정 서류와 소득판정을 쉽고 똑똑하게 해결해 드립니다.
@@ -1003,7 +1010,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               임산부님들이 가장 자주 질문하는 TOP 5
             </h2>
             <p className="text-xs sm:text-sm text-[#8a817a]">
-              질문을 클릭하시면 AI 따스미가 1:1 대화로 상세 답변해 드립니다
+              질문을 클릭하시면 AI 해피케어 따스미가 1:1 대화로 상세 답변해 드립니다
             </p>
           </div>
 
@@ -1049,7 +1056,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </h2>
 
           <p className="text-sm sm:text-base text-[#d6c6b9] max-w-lg mx-auto">
-            1:1 대화형 상담 AI 따스미가 산모님의 상황에 딱 맞추어 필요한 서류와 신청 방법까지 차근차근 안내해 드립니다.
+            1:1 대화형 상담 AI 해피케어 따스미가 산모님의 상황에 딱 맞추어 필요한 서류와 신청 방법까지 차근차근 안내해 드립니다.
           </p>
 
           <div className="pt-2">
@@ -1058,7 +1065,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               className="px-8 py-4 rounded-full bg-[#967468] hover:bg-[#85665b] text-white text-base font-extrabold shadow-xl hover:shadow-2xl transition-all cursor-pointer inline-flex items-center gap-2"
             >
               <MessageSquare className="w-5 h-5" />
-              <span>따스미 AI 챗봇 상담 시작하기</span>
+              <span>해피케어 따스미 AI 챗봇 상담 시작하기</span>
             </button>
           </div>
         </div>

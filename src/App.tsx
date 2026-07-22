@@ -11,12 +11,8 @@ import { INITIAL_STEP_0_MENU } from './data/knowledgeBase';
 import { Send, Sparkles, HelpCircle, HeartHandshake, Calculator, Info } from 'lucide-react';
 
 export default function App() {
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return localStorage.getItem('gemini_api_key') || '';
-  });
-  const [isApproved, setIsApproved] = useState<boolean>(() => {
-    return localStorage.getItem('gemini_api_key_approved') === 'true';
-  });
+  const [apiKey, setApiKey] = useState<string>('');
+  const [isApproved, setIsApproved] = useState<boolean>(false);
 
   const [viewMode, setViewMode] = useState<'landing' | 'chat'>('landing');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -54,25 +50,28 @@ export default function App() {
       if (response.ok && data.valid) {
         setApiKey(keyToVerify);
         setIsApproved(true);
-        localStorage.setItem('gemini_api_key', keyToVerify);
-        localStorage.setItem('gemini_api_key_approved', 'true');
         return {
           success: true,
           message: data.message || 'Gemini API Key가 성공적으로 검증 및 승인되었습니다.',
         };
       } else {
         setIsApproved(false);
-        localStorage.removeItem('gemini_api_key_approved');
+
+        let errMsg = data.error || '';
+        if (!errMsg || errMsg.includes('{') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('API key not valid')) {
+          errMsg = '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.';
+        }
+
         return {
           success: false,
-          message: data.error || '유효하지 않은 Gemini API 키입니다. 다시 확인해 주세요.',
+          message: errMsg,
         };
       }
     } catch (error: any) {
       setIsApproved(false);
       return {
         success: false,
-        message: '서버와 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+        message: '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.',
       };
     }
   };
@@ -80,8 +79,6 @@ export default function App() {
   const handleResetApiKey = () => {
     setApiKey('');
     setIsApproved(false);
-    localStorage.removeItem('gemini_api_key');
-    localStorage.removeItem('gemini_api_key_approved');
     setViewMode('landing');
   };
 
@@ -90,7 +87,7 @@ export default function App() {
     const initialWelcome: ChatMessage = {
       id: 'msg-welcome-step0',
       sender: 'assistant',
-      text: `안녕하세요! 2026 산모·신생아 건강관리 지원사업 전담 AI 상담원 '따스미'입니다. 🌸
+      text: `안녕하세요! 2026 산모·신생아 건강관리 지원사업 전담 AI 상담원 '해피케어 따스미'입니다. 🌸
 산모님과 아기의 소중한 만남을 진심으로 축하드립니다.
 
 2026년 최신 보건복지부 지원 지침에 맞춰 지원 대상, 정부지원금액, 서비스 이용기간, 보건소 및 복지로 신청 방법을 자세하게 1:1 상담해 드립니다.
@@ -207,7 +204,7 @@ export default function App() {
       const initialWelcome: ChatMessage = {
         id: `msg-welcome-${Date.now()}`,
         sender: 'assistant',
-        text: `안녕하세요! 2026 산모·신생아 건강관리 지원사업 전담 AI 상담원 '따스미'입니다. 🌸
+        text: `안녕하세요! 2026 산모·신생아 건강관리 지원사업 전담 AI 상담원 '해피케어 따스미'입니다. 🌸
 산모님과 아기의 소중한 만남을 진심으로 축하드립니다.
 
 2026년 최신 보건복지부 지원 지침에 맞춰 지원 대상, 정부지원금액, 서비스 이용기간, 보건소 및 복지로 신청 방법을 자세하게 1:1 상담해 드립니다.

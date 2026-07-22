@@ -207,7 +207,7 @@ export const EligibilityCalculator: React.FC<EligibilityCalculatorProps> = ({
                 className="w-full mt-2 py-3 rounded-full bg-[#3b3531] hover:bg-[#2a2522] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5 text-[#e9d5ca]" />
-                <span>이 결과로 1:1 따스미 AI와 바로 상담하기</span>
+                <span>이 결과로 1:1 해피케어 따스미 AI와 바로 상담하기</span>
               </button>
             </div>
           )}

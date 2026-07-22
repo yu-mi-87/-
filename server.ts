@@ -25,10 +25,10 @@ const ai = new GoogleGenAI({
 
 // System Prompt for Maternal & Newborn Health Management Support Chatbot
 const SYSTEM_PROMPT = `
-# SYSTEM PROMPT: 산모·신생아 건강관리 지원사업 전문 상담 AI '따스미' (2026년 최신 지침)
+# SYSTEM PROMPT: 산모·신생아 건강관리 지원사업 전문 상담 AI '해피케어 따스미' (2026년 최신 지침)
 
 ## 역할과 톤
-당신은 대한민국 보건복지부 "2026년 산모·신생아 건강관리 지원사업" 전담 AI 상담원 "따스미"입니다.
+당신은 대한민국 보건복지부 "2026년 산모·신생아 건강관리 지원사업" 전담 AI 상담원 "해피케어 따스미"입니다.
 20~30대 예비 산모 및 부모님을 위해 다정하고 세심하며, 법령·지침 데이터에 기반한 최고 수준의 전문성을 제공합니다.
 사용자를 "산모님", "부모님"으로 다정하게 호칭하며, 복잡한 관공서 문장 대신 직관적이고 가독성 높은 한국어로 명확하게 설명합니다.
 
@@ -40,7 +40,7 @@ const SYSTEM_PROMPT = `
 ## STEP 0. 첫 인사 및 핵심 질문 메뉴
 사용자가 구체적인 질문 없이 시작한 경우 따뜻한 인사와 핵심 메뉴를 제안합니다.
 
-안녕하세요! 2026년 산모·신생아 건강관리 지원사업 전문 AI 상담원 '따스미'입니다. 🌸
+안녕하세요! 2026년 산모·신생아 건강관리 지원사업 전문 AI 상담원 '해피케어 따스미'입니다. 🌸
 산모님과 소중한 아기의 첫 출발을 축하드립니다! 무엇이 궁금하신가요? 아래 항목을 선택하시거나 편하게 말씀해 주세요.
 
 1. 2026년 소득기준 & 건강보험료 지원자격 판정
@@ -121,7 +121,14 @@ function getGeminiClient(userApiKey?: string) {
 app.post('/api/verify-key', async (req, res) => {
   try {
     const { apiKey } = req.body;
-    const client = getGeminiClient(apiKey);
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+      return res.status(400).json({
+        valid: false,
+        error: 'Gemini API Key를 입력해 주세요.'
+      });
+    }
+
+    const client = getGeminiClient(apiKey.trim());
 
     // Perform a lightweight verification call to test key validity
     await client.models.generateContent({
@@ -131,16 +138,14 @@ app.post('/api/verify-key', async (req, res) => {
 
     return res.json({
       valid: true,
-      message: 'Gemini API Key가 정상적으로 승인되었습니다. 따스미 AI의 모든 기능을 이용하실 수 있습니다.'
+      message: 'Gemini API Key가 정상적으로 승인되었습니다. 해피케어 따스미 AI의 모든 기능을 이용하실 수 있습니다.'
     });
   } catch (error: any) {
     console.error('API Key Verification Failed:', error);
-    let userFriendlyError = 'Gemini API 키 검증에 실패했습니다. 올바른 키인지 확인해 주세요.';
-    const rawMsg = String(error?.message || '');
-    if (rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('API key not valid') || rawMsg.includes('400')) {
-      userFriendlyError = '입력하신 Gemini API 키가 유효하지 않습니다. AIzaSy... 형태의 올바른 API Key를 입력해 주세요.';
-    } else if (rawMsg.includes('QUOTA_EXCEEDED') || rawMsg.includes('429')) {
-      userFriendlyError = '해당 Gemini API 키의 한도(Quota)가 초과되었습니다. 새로운 키를 발급받아 사용해 주세요.';
+    let userFriendlyError = '입력하신 Gemini API 키가 유효하지 않습니다. Google AI Studio에서 API 키를 새로 발급받아 승인받아 주세요.';
+    const rawMsg = String(error?.message || error || '');
+    if (rawMsg.includes('QUOTA') || rawMsg.includes('429')) {
+      userFriendlyError = '해당 Gemini API 키의 사용 한도(Quota)가 초과되었습니다. Google AI Studio에서 새로운 API Key를 발급받아 승인받아 주세요.';
     }
     return res.status(400).json({
       valid: false,
